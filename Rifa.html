@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rifa da Maya</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .aba {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 5px 5px 0 0;
+    }
+    .aba.ativa {
+      background: #ffffff;
+      font-weight: bold;
+      border-bottom: none;
+    }
+    .conteudoAba {
+      border: 1px solid #ccc;
+      border-top: none;
+      padding: 15px;
+      background: #fff;
+      border-radius: 0 0 6px 6px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: center;
+    }
+    .gridRifa {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+      gap: 10px;
+    }
+    button.itemRifa {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 14px;
+      min-height: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      cursor: pointer;
+      background-color: #fff;
+      color: #333;
+      user-select: none;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    button.itemRifa.disponivel:hover {
+      background-color: #e0f7fa;
+    }
+    button.itemRifa.reservado {
+      background-color: #fff5cc;
+      color: #996600;
+    }
+    button.itemRifa.reservado:hover {
+      background-color: #fff9e6;
+    }
+    button.itemRifa.pago {
+      background-color: #cce5ff;
+      color: #004085;
+      cursor: default;
+    }
+    .qrcode {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .loading-sorteio {
+      font-size: 20px;
+      color: #444;
+      margin-top: 20px;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Rifa da Maya – Nado Artístico no Uruguai</h1>
+<div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+  <p style="margin: 0;"><strong>Chave PIX:</strong> 3d700207-a62a-4ab0-9eb9-8a9aa4bd05db</p>
+  <div id="qrcodeHeader"></div>
+</div>
+
+<nav style="margin: 20px 0; display: flex; gap: 10px;">
+  <button onclick="abrirAba(event, 'visual')" class="aba ativa">🔢 Visualização</button>
+  <button onclick="abrirAba(event, 'dados')" class="aba">📝 Gerenciar</button>
+  <button onclick="abrirAba(event, 'resumo')" class="aba">📊 Resumo</button>
+  <button onclick="abrirAba(event, 'sorteio')" class="aba">🎲 Sorteio</button>
+</nav>
+
+<div id="abaVisual" class="conteudoAba">
+  <h2>Tabela de Visualização</h2>
+  <div id="tabelaVisual" class="gridRifa"></div>
+  <div class="qrcode">
+    <h3>QR Code para PIX</h3>
+    <div id="qrcode"></div>
+    <button onclick="baixarQRCode()">📥 Baixar QR Code</button>
+  </div>
+</div>
+
+<div id="abaDados" class="conteudoAba" style="display:none;">
+  <h2>Gerenciar Cotas</h2>
+  <table id="tabelaDados">
+    <thead>
+      <tr>
+        <th>Nº</th>
+        <th>Nome</th>
+        <th>Contato</th>
+        <th>Pago</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div id="abaResumo" class="conteudoAba" style="display:none;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; margin-bottom: 30px; gap: 20px; background: #e8f4fd; padding: 15px; border-radius: 8px; border: 1px solid #c0e0f5;">
+    <div>
+      <h2>Ferramentas</h2>
+      <button onclick="exportarRifa()">📤 Exportar JSON</button>
+      <button onclick="exportarCSV()">📊 Exportar CSV</button>
+      <input type="file" id="importarArquivo" accept=".json" onchange="importarRifa()" />
+      <br /><br />
+      <button onclick="limparTudo()">🗑️ Limpar tudo</button>
+    </div>
+    <div style="min-width: 250px;">
+      <h2>Resumo Financeiro</h2>
+      <div id="resumoFinanceiro" style="font-size: 15px;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="abaSorteio" class="conteudoAba" style="display:none;">
+  <h2>🎲 Realizar Sorteio</h2>
+  <button onclick="sortearNumero()">Sortear Número</button>
+  <div id="resultadoSorteio" style="margin-top: 20px; font-size: 18px; font-weight: bold;"></div>
+</div>
+
+<script>
+const TOTAL_NUMEROS = 300;
+let rifa = [];
+
+function carregarRifa() {
+  const salva = localStorage.getItem("rifaMayaDados");
+  if (salva) {
+    rifa = JSON.parse(salva);
+  } else {
+    rifa = Array.from({ length: TOTAL_NUMEROS }, (_, i) => ({ numero: i + 1, nome: "", contato: "", pago: false }));
+  }
+}
+
+function salvarRifa() {
+  localStorage.setItem("rifaMayaDados", JSON.stringify(rifa));
+}
+
+function atualizarTabela() {
+  const tbody = document.querySelector("#tabelaDados tbody");
+  tbody.innerHTML = "";
+  rifa.forEach((item, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${item.numero}</td>
+      <td><input type="text" value="${item.nome}" onblur="atualizarNome(${i}, this.value)" /></td>
+      <td><input type="text" value="${item.contato || ''}" onblur="atualizarContato(${i}, this.value)" /></td>
+      <td><input type="checkbox" ${item.pago ? "checked" : ""} onchange="atualizarPago(${i}, this.checked)" /></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  atualizarVisualizacao();
+  atualizarResumo();
+  salvarRifa();
+}
+
+function atualizarVisualizacao() {
+  const container = document.getElementById("tabelaVisual");
+  container.innerHTML = "";
+
+  rifa.forEach((item, i) => {
+    const btn = document.createElement("button");
+    btn.className = "itemRifa";
+
+    if (item.nome && item.pago) btn.classList.add("pago");
+    else if (item.nome) btn.classList.add("reservado");
+    else btn.classList.add("disponivel");
+
+    btn.innerHTML = `<strong>${item.numero}</strong><br>${item.nome || "-"}`;
+    btn.title = item.pago
+      ? "Número pago — não pode ser alterado"
+      : item.nome
+      ? "Clique para limpar nome e contato"
+      : "Clique para reservar";
+
+    btn.onclick = () => {
+      if (item.pago) {
+        alert("Este número já está pago e não pode ser alterado.");
+        return;
+      }
+
+      if (item.nome) {
+        if (confirm(`Deseja limpar o nome e contato da cota número ${item.numero}?`)) {
+          atualizarNome(i, "");
+          atualizarContato(i, "");
+          atualizarPago(i, false);
+          atualizarTabela();
+        }
+      } else {
+        const nome = prompt(`Informe seu nome para reservar o número ${item.numero}:`);
+        if (nome && nome.trim() !== "") {
+          atualizarNome(i, nome.trim());
+          const contato = prompt("Informe seu contato (opcional):");
+          if (contato !== null) {
+            atualizarContato(i, contato.trim());
+          }
+          atualizarPago(i, false);
+          atualizarTabela();
+        }
+      }
+    };
+
+    container.appendChild(btn);
+  });
+}
+
+function atualizarResumo() {
+  const total = rifa.length;
+  const reservados = rifa.filter(r => r.nome && !r.pago).length;
+  const pagos = rifa.filter(r => r.pago).length;
+  const livres = total - reservados - pagos;
+  const totalPago = pagos * 10;
+  document.getElementById("resumoFinanceiro").innerHTML = `
+    Total de cotas: ${total}<br>
+    Pagos: ${pagos}<br>
+    Reservados: ${reservados}<br>
+    Disponíveis: ${livres}<br>
+    Valor total pago: R$ ${totalPago.toFixed(2)}
+  `;
+}
+
+function atualizarNome(i, nome) {
+  rifa[i].nome = nome;
+  salvarRifa();
+  atualizarVisualizacao();
+  atualizarResumo();
+}
+
+function atualizarContato(i, contato) {
+  rifa[i].contato = contato;
+  salvarRifa();
+}
+
+function atualizarPago(i, pago) {
+  rifa[i].pago = pago;
+  salvarRifa();
+  atualizarVisualizacao();
+  atualizarResumo();
+}
+
+function limparTudo() {
+  if (confirm("Tem certeza que deseja limpar todos os dados?")) {
+    localStorage.removeItem("rifaMayaDados");
+    carregarRifa();
+    atualizarTabela();
+  }
+}
+
+function exportarRifa() {
+  const blob = new Blob([JSON.stringify(rifa, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rifa-maya.json";
+  a.click();
+}
+
+function exportarCSV() {
+  let csv = "Numero,Nome,Contato,Pago\n";
+  rifa.forEach(r => {
+    csv += `${r.numero},${r.nome},${r.contato},${r.pago ? "Sim" : "Não"}\n`;
+  });
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "rifa-maya.csv";
+  a.click();
+}
+
+function importarRifa() {
+  const file = document.getElementById("importarArquivo").files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    rifa = JSON.parse(e.target.result);
+    salvarRifa();
+    atualizarTabela();
+  };
+  reader.readAsText(file);
+}
+
+function abrirAba(event, nome) {
+  document.querySelectorAll(".conteudoAba").forEach(div => div.style.display = "none");
+  document.querySelectorAll(".aba").forEach(btn => btn.classList.remove("ativa"));
+  document.getElementById("aba" + capitalize(nome)).style.display = "block";
+  event.target.classList.add("ativa");
+}
+
+function capitalize(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+function gerarQRCodePix() {
+  const payloadPix = `00020126580014br.gov.bcb.pix01363d700207-a62a-4ab0-9eb9-8a9aa4bd05db5204000053039865802BR5924HOMERO LEONARDO CARAMORI6009Sao Paulo62290525REC6827C913F325240696923663040C90`;
+  new QRCode(document.getElementById("qrcode"), {
+    text: payloadPix,
+    width: 200,
+    height: 200
+  });
+  new QRCode(document.getElementById("qrcodeHeader"), {
+    text: payloadPix,
+    width: 80,
+    height: 80
+  });
+}
+
+function baixarQRCode() {
+  const qrcodeEl = document.querySelector("#qrcode canvas");
+  if (!qrcodeEl) {
+    alert("QR Code ainda não foi gerado.");
+    return;
+  }
+
+  const url = qrcodeEl.toDataURL("image/png");
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "pix-qrcode.png";
+  a.click();
+}
+
+function sortearNumero() {
+  const participantes = rifa.filter(r => r.nome && r.pago);
+  const resultado = document.getElementById("resultadoSorteio");
+
+  if (participantes.length === 0) {
+    resultado.innerText = "Nenhuma cota paga encontrada para o sorteio.";
+    return;
+  }
+
+  resultado.innerHTML = '<div class="loading-sorteio">Carregando sorteio...</div>';
+
+  setTimeout(() => {
+    const sorteado = participantes[Math.floor(Math.random() * participantes.length)];
+    resultado.innerHTML = `🎉 <span style="font-size: 24px;">Parabéns!</span><br>Número sorteado: <strong>${sorteado.numero}</strong><br>Nome: <strong>${sorteado.nome}</strong>`;
+  }, 10000);
+}
+
+carregarRifa();
+atualizarTabela();
+gerarQRCodePix();
+</script>
+
+</body>
+</html>
