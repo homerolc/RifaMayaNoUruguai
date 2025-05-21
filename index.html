@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Escolha sua Cota - Rifa da Maya</title>
   <style>
     body {
@@ -47,6 +47,22 @@
       color: #004085;
       cursor: not-allowed;
     }
+    .selecionado {
+      background: #c7f5d9;
+      border: 1px solid #33cc66;
+      color: #006633;
+    }
+    button#salvar {
+      margin: 20px auto;
+      display: block;
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 6px;
+      background-color: #28a745;
+      color: white;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -55,10 +71,12 @@
 <p style="text-align: center;"><strong>Chave PIX:</strong> 3d700207-a62a-4ab0-9eb9-8a9aa4bd05db</p>
 
 <div class="grid" id="gradeNumeros"></div>
+<button id="salvar">Salvar Seleção</button>
 
 <script>
   const TOTAL_NUMEROS = 300;
   let rifa = [];
+  let selecionados = [];
 
   function carregarRifa() {
     const salva = localStorage.getItem("rifaMayaDados");
@@ -81,45 +99,59 @@
   function renderizar() {
     const container = document.getElementById("gradeNumeros");
     container.innerHTML = "";
+    selecionados = selecionados.filter(i => !rifa[i].nome && !rifa[i].pago); // limpa selecionados inválidos
 
     rifa.forEach((item, i) => {
       const btn = document.createElement("button");
       btn.className = "botao";
-      if (item.nome && item.pago) {
+
+      if (item.pago) {
         btn.classList.add("pago");
       } else if (item.nome) {
         btn.classList.add("reservado");
+      } else if (selecionados.includes(i)) {
+        btn.classList.add("selecionado");
       } else {
         btn.classList.add("disponivel");
       }
 
       btn.innerHTML = `<strong>${item.numero}</strong><div>${item.nome || "-"}</div>`;
 
-      if (!item.pago) {
-        btn.onclick = () => editarCota(i);
+      if (!item.pago && !item.nome) {
+        btn.onclick = () => {
+          if (selecionados.includes(i)) {
+            selecionados = selecionados.filter(ind => ind !== i);
+          } else {
+            selecionados.push(i);
+          }
+          renderizar();
+        };
       }
 
       container.appendChild(btn);
     });
   }
 
-  function editarCota(i) {
-    const nome = prompt("Digite seu nome:", rifa[i].nome || "");
-    if (nome === null) return; // cancelado
-
-    if (nome.trim() === "") {
-      // limpar cota se não está paga
-      rifa[i].nome = "";
-      rifa[i].contato = "";
-    } else {
-      const contato = prompt("Digite seu contato (opcional):", rifa[i].contato || "") || "";
-      rifa[i].nome = nome.trim();
-      rifa[i].contato = contato.trim();
+  document.getElementById("salvar").addEventListener("click", () => {
+    if (selecionados.length === 0) {
+      alert("Selecione pelo menos um número.");
+      return;
     }
 
+    const nome = prompt("Digite seu nome:");
+    if (!nome || nome.trim() === "") return;
+
+    const contato = prompt("Digite seu contato (opcional):") || "";
+
+    selecionados.forEach(i => {
+      rifa[i].nome = nome.trim();
+      rifa[i].contato = contato.trim();
+    });
+
     salvarRifa();
+    selecionados = [];
     renderizar();
-  }
+  });
 
   carregarRifa();
   renderizar();
